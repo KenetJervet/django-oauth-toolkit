@@ -41,10 +41,22 @@ class BaseAuthorizationView(LoginRequiredMixin, OAuthLibMixin, View):
         redirect, error_response = super(BaseAuthorizationView, self).error_response(error, **kwargs)
 
         if redirect:
-            return HttpResponseRedirect(error_response['url'])
+            # return HttpResponseRedirect(error_response['url'])
+            resp = HttpResponse("", status=302)
+            resp['Location'] = error_response['url']
+            return resp
 
         status = error_response['error'].status_code
         return self.render_to_response(error_response, status=status)
+
+    def form_valid(self, form):
+        # The following is a default implementation.
+        # return super(BaseAuthorizationView, self).form_valid(form)
+
+        # BUT WE NEED THIS LITTLE HACK!
+        response = HttpResponse('', status=302)
+        response['Location'] = self.success_url
+        return response
 
 
 class AuthorizationView(BaseAuthorizationView, FormView):
@@ -99,6 +111,7 @@ class AuthorizationView(BaseAuthorizationView, FormView):
             uri, headers, body, status = self.create_authorization_response(
                 request=self.request, scopes=scopes, credentials=credentials, allow=allow)
             self.success_url = uri
+            print(self.success_url)
             log.debug("Success url for the request: {0}".format(self.success_url))
             return super(AuthorizationView, self).form_valid(form)
 
@@ -121,6 +134,7 @@ class AuthorizationView(BaseAuthorizationView, FormView):
             # Check to see if the user has already granted access and return
             # a successful response depending on 'approval_prompt' url parameter
             require_approval = request.GET.get('approval_prompt', oauth2_settings.REQUEST_APPROVAL_PROMPT)
+
             if require_approval == 'auto':
                 tokens = request.user.accesstoken_set.filter(application=kwargs['application'],
                                                              expires__gt=timezone.now()).all()
@@ -130,8 +144,10 @@ class AuthorizationView(BaseAuthorizationView, FormView):
                         uri, headers, body, status = self.create_authorization_response(
                             request=self.request, scopes=" ".join(scopes),
                             credentials=credentials, allow=True)
-                        return HttpResponseRedirect(uri)
-
+                        # return HttpResponseRedirect(uri)
+                        resp = HttpResponse("", status=302)
+                        resp['Location'] = uri
+                        return resp
             return self.render_to_response(self.get_context_data(**kwargs))
 
         except OAuthToolkitError as error:
@@ -153,7 +169,6 @@ class TokenView(CsrfExemptMixin, OAuthLibMixin, View):
     def post(self, request, *args, **kwargs):
         url, headers, body, status = self.create_token_response(request)
         response = HttpResponse(content=body, status=status)
-
         for k, v in headers.items():
             response[k] = v
         return response
